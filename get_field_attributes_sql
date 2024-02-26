@@ -1,0 +1,76 @@
+DECLARE
+    result_set ARRAY,
+    schema_name STRING,
+    field_table_comparison OBJECT,
+    field_columns OBJECT,
+    other_field_columns OBJECT,
+    other_schema_name STRING;
+    
+-- Get list of schemas starting with 'EC%' in the INGESTION_DB database
+FOR schema_result IN (
+    SELECT SCHEMA_NAME
+    FROM INFORMATION_SCHEMA.SCHEMATA
+    WHERE DATABASE_NAME = 'INGESTION_DB' AND SCHEMA_NAME LIKE 'EC%'
+)
+DO
+    schema_name := schema_result.SCHEMA_NAME;
+    
+    -- Check if the 'FIELD' table exists in the current schema
+    field_table_comparison := OBJECT_CONSTRUCT(schema_name);
+    IF EXISTS (
+        SELECT 1
+        FROM INFORMATION_SCHEMA.TABLES
+        WHERE TABLE_SCHEMA = schema_name AND TABLE_NAME = 'FIELD'
+    )
+    THEN
+        -- Get column names and data types from the 'FIELD' table
+        field_columns := OBJECT_CONSTRUCT();
+        FOR column_result IN (
+            SELECT COLUMN_NAME, DATA_TYPE
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = schema_name AND TABLE_NAME = 'FIELD'
+        )
+        DO
+            field_columns[column_result.COLUMN_NAME] := column_result.DATA_TYPE;
+        END FOR;
+        
+        -- Compare 'FIELD' table columns with other schemas
+        FOR other_schema_result IN (
+            SELECT SCHEMA_NAME
+            FROM INFORMATION_SCHEMA.SCHEMATA
+            WHERE DATABASE_NAME = 'INGESTION_DB' AND SCHEMA_NAME LIKE 'EC%' AND SCHEMA_NAME != schema_name
+        )
+        DO
+            other_schema_name := other_schema_result.SCHEMA_NAME;
+            
+            -- Check if the 'FIELD' table exists in the other schema
+            IF EXISTS (
+                SELECT 1
+                FROM INFORMATION_SCHEMA.TABLES
+                WHERE TABLE_SCHEMA = other_schema_name AND TABLE_NAME = 'FIELD'
+            )
+            THEN
+                -- Get column names and data types from the 'FIELD' table in the other schema
+                other_field_columns := OBJECT_CONSTRUCT();
+                FOR other_column_result IN (
+                    SELECT COLUMN_NAME, DATA_TYPE
+                    FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_SCHEMA = other_schema_name AND TABLE_NAME = 'FIELD'
+                )
+                DO
+                    other_field_columns[other_column_result.COLUMN_NAME] := other_column_result.DATA_TYPE;
+                END FOR;
+                
+                -- Compare columns and data types
+                field_table_comparison[other_schema_name] := other_field_columns;
+            END IF;
+        END FOR;
+        
+        -- Add comparison result to the result set
+        field_table_comparison[schema_name] := field_columns;
+        result_set := ARRAY_APPEND(result_set, ROW(schema_name, field_table_comparison));
+    END IF;
+END FOR;
+
+-- Return the result set
+SELECT * FROM TABLE(flatten(input => parse_json('[%s]'::STRING, TO_VARIANT(result_set))));
