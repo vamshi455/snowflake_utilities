@@ -10,13 +10,10 @@ field_tables AS (
 )
 SELECT 
     s.SCHEMA_NAME,
-    OBJECT_CONSTRUCT(
-        TABLE_SCHEMA,
-        OBJECT_AGG(COLUMN_NAME, DATA_TYPE)
+    (
+        SELECT OBJECT_AGG(COLUMN_NAME, DATA_TYPE)
+        FROM field_tables f
+        WHERE f.TABLE_SCHEMA = s.SCHEMA_NAME
     ) AS FIELD_TABLE_COMPARISON
 FROM 
-    schemas s
-LEFT JOIN 
-    field_tables f ON s.SCHEMA_NAME = f.TABLE_SCHEMA
-GROUP BY 
-    s.SCHEMA_NAME;
+    schemas s;
