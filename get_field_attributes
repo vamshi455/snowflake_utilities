@@ -1,0 +1,77 @@
+CREATE OR REPLACE PROCEDURE compare_field_tables_across_schemas()
+RETURNS TABLE (schema_name STRING, field_table_comparison VARIANT)
+LANGUAGE JAVASCRIPT
+EXECUTE AS CALLER
+AS
+$$
+    var result_set = [];
+    var schema_name = '';
+    var field_table_comparison = {};
+
+    // Get list of schemas starting with 'EC%' in the INGESTION_DB database
+    var schemas_query = "SHOW SCHEMAS IN DATABASE INGESTION_DB LIKE 'EC%';";
+    var stmt = snowflake.createStatement({sqlText: schemas_query});
+    var resultSet = stmt.execute();
+    
+    while (resultSet.next()) {
+        schema_name = resultSet.getColumnValue(1);
+        
+        // Check if the 'FIELD' table exists in the current schema
+        var field_table_query = "SHOW TABLES IN SCHEMA " + schema_name + " LIKE 'FIELD';";
+        stmt = snowflake.createStatement({sqlText: field_table_query});
+        var field_table_resultSet = stmt.execute();
+        
+        // If 'FIELD' table exists, compare its columns with other schemas
+        if (field_table_resultSet.next()) {
+            var columns_query = "DESCRIBE TABLE " + schema_name + ".FIELD;";
+            stmt = snowflake.createStatement({sqlText: columns_query});
+            var columns_resultSet = stmt.execute();
+            
+            // Extract column names and data types from 'FIELD' table
+            var field_columns = {};
+            while (columns_resultSet.next()) {
+                var column_name = columns_resultSet.getColumnValue(2);
+                var data_type = columns_resultSet.getColumnValue(3);
+                field_columns[column_name] = data_type;
+            }
+            
+            // Compare 'FIELD' table columns with other schemas
+            var comparison_result = {};
+            comparison_result[schema_name] = field_columns;
+            
+            var other_schemas_query = "SHOW SCHEMAS IN DATABASE INGESTION_DB LIKE 'EC%' AND SCHEMA_NAME != '" + schema_name + "';";
+            stmt = snowflake.createStatement({sqlText: other_schemas_query});
+            var other_schemas_resultSet = stmt.execute();
+            
+            while (other_schemas_resultSet.next()) {
+                var other_schema_name = other_schemas_resultSet.getColumnValue(1);
+                
+                // Check if the 'FIELD' table exists in other schemas
+                var other_field_table_query = "SHOW TABLES IN SCHEMA " + other_schema_name + " LIKE 'FIELD';";
+                stmt = snowflake.createStatement({sqlText: other_field_table_query});
+                var other_field_table_resultSet = stmt.execute();
+                
+                // If 'FIELD' table exists, compare its columns with the current schema
+                if (other_field_table_resultSet.next()) {
+                    var other_columns_query = "DESCRIBE TABLE " + other_schema_name + ".FIELD;";
+                    stmt = snowflake.createStatement({sqlText: other_columns_query});
+                    var other_columns_resultSet = stmt.execute();
+                    
+                    var other_field_columns = {};
+                    while (other_columns_resultSet.next()) {
+                        var other_column_name = other_columns_resultSet.getColumnValue(2);
+                        var other_data_type = other_columns_resultSet.getColumnValue(3);
+                        other_field_columns[other_column_name] = other_data_type;
+                    }
+                    
+                    // Compare columns and data types
+                    comparison_result[other_schema_name] = other_field_columns;
+                }
+            }
+            
+            result_set.push({schema_name: schema_name, field_table_comparison: comparison_result});
+        }
+    }
+    
+    return result_set;
+$$;
