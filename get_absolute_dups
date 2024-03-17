@@ -1,17 +1,15 @@
--- Step 1: Declare a variable to store the column names
+-- Step 1: Retrieve column names into a temporary table
+CREATE OR REPLACE TEMPORARY TABLE temp_column_names AS
+SELECT COLUMN_NAME
+FROM INFORMATION_SCHEMA.COLUMNS
+WHERE TABLE_SCHEMA = 'YOUR_SCHEMA'
+AND TABLE_NAME = 'YOUR_TABLE_NAME';
+
+-- Step 2: Concatenate column names using LISTAGG
 SET column_list = (
-    SELECT LISTAGG(COLUMN_NAME, ', ') WITHIN GROUP (ORDER BY ORDINAL_POSITION)
-    FROM INFORMATION_SCHEMA.COLUMNS
-    WHERE TABLE_SCHEMA = 'YOUR_SCHEMA'
-    AND TABLE_NAME = 'YOUR_TABLE_NAME'
+    SELECT LISTAGG(COLUMN_NAME, ', ') WITHIN GROUP (ORDER BY COLUMN_NAME)
+    FROM temp_column_names
 );
 
--- Step 2: Use the variable in the dynamic SQL query
-EXECUTE IMMEDIATE '
-    SELECT *
-    FROM (
-        SELECT *,
-               COUNT(*) OVER (PARTITION BY ' || column_list || ') AS duplicate_count
-        FROM YOUR_TABLE_NAME
-    ) AS subquery
-    WHERE duplicate_count > 1';
+-- Step 3: Query the result of the variable directly
+SELECT column_list;
