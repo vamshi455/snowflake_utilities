@@ -1,0 +1,14 @@
+-- Step 1: Generate the list of column names for the table
+SELECT LISTAGG(COLUMN_NAME, ', ') WITHIN GROUP (ORDER BY ORDINAL_POSITION) AS column_list
+FROM INFORMATION_SCHEMA.COLUMNS
+WHERE TABLE_SCHEMA = 'YOUR_SCHEMA'
+AND TABLE_NAME = 'YOUR_TABLE_NAME';
+
+-- Step 2: Use the generated column list to construct the SQL query
+SELECT *
+FROM (
+    SELECT *,
+           COUNT(*) OVER (PARTITION BY {{column_list}}) AS duplicate_count
+    FROM YOUR_TABLE_NAME
+) AS subquery
+WHERE duplicate_count > 1;
